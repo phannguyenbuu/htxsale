@@ -80,6 +80,12 @@ const Row = styled.div`
   margin-bottom: 8px;
 `;
 
+const TripleRow = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+`;
+
 const Input = styled.input`
   width: 100%;
   border: 1px solid #ced6e8;
@@ -294,18 +300,29 @@ function SaleAdminPanel({ onLogout, user }) {
     const logoPrice = Number(pricingDraft.logo_price || 0);
     const cardPrice = Number(pricingDraft.card_price || 0);
     const tshirtPrice = Number(pricingDraft.tshirt_price || 0);
+    const normalizePayment = (value) => String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
     return bills.reduce(
       (acc, b) => {
         const logoMoney = (Number(b.logo_qty) || 0) * logoPrice;
         const cardMoney = (Number(b.card_qty) || 0) * cardPrice;
         const tshirtMoney = (Number(b.tshirt_qty) || 0) * tshirtPrice;
-        acc.total += Number(b.total_amount) || (logoMoney + cardMoney + tshirtMoney);
+        const rowTotal = Number(b.total_amount) || (logoMoney + cardMoney + tshirtMoney);
+        acc.total += rowTotal;
         acc.logo += logoMoney;
         acc.card += cardMoney;
         acc.tshirt += tshirtMoney;
+        const pm = normalizePayment(b.payment_method);
+        if (pm.includes('chuyen khoan')) {
+          acc.transfer += rowTotal;
+        } else if (pm.includes('tien mat')) {
+          acc.cash += rowTotal;
+        }
         return acc;
       },
-      { total: 0, logo: 0, card: 0, tshirt: 0 }
+      { total: 0, logo: 0, card: 0, tshirt: 0, transfer: 0, cash: 0 }
     );
   }, [bills, pricingDraft]);
 
@@ -388,6 +405,11 @@ function SaleAdminPanel({ onLogout, user }) {
   };
 
   const updateAllInventory = async () => {
+    await axios.put('/api/admin/pricing', {
+      logo_price: Math.max(0, Number(pricingDraft.logo_price || 0)),
+      card_price: Math.max(0, Number(pricingDraft.card_price || 0)),
+      tshirt_price: Math.max(0, Number(pricingDraft.tshirt_price || 0)),
+    });
     const tasks = Object.entries(inventoryDraft).map(([htx, val]) =>
       axios.put('/api/admin/inventory', {
         htx,
@@ -398,7 +420,8 @@ function SaleAdminPanel({ onLogout, user }) {
     );
     await Promise.all(tasks);
     await loadInventory();
-    setMessage('Đã cập nhật kho hàng.');
+    await loadPricing();
+    setMessage('Đã cập nhật kho hàng và giá sản phẩm.');
   };
 
   const clearAllInventory = async () => {
@@ -427,16 +450,6 @@ function SaleAdminPanel({ onLogout, user }) {
       ...prev,
       [key]: parseMoneyInput(rawValue),
     }));
-  };
-
-  const savePricing = async () => {
-    await axios.put('/api/admin/pricing', {
-      logo_price: Math.max(0, Number(pricingDraft.logo_price || 0)),
-      card_price: Math.max(0, Number(pricingDraft.card_price || 0)),
-      tshirt_price: Math.max(0, Number(pricingDraft.tshirt_price || 0)),
-    });
-    await loadPricing();
-    setMessage('Đã cập nhật giá sản phẩm.');
   };
 
   const saveSale = async () => {
@@ -477,13 +490,13 @@ function SaleAdminPanel({ onLogout, user }) {
       </Header>
 
       <TabRow>
+        <TabBtn $active={activeTab === Tabs.bills} onClick={() => setActiveTab(Tabs.bills)}>
+          <FaFileInvoice />
+          <span>Doanh thu</span>
+        </TabBtn>
         <TabBtn $active={activeTab === Tabs.inventory} onClick={() => setActiveTab(Tabs.inventory)}>
           <FaBoxes />
           <span>Kho hàng</span>
-        </TabBtn>
-        <TabBtn $active={activeTab === Tabs.bills} onClick={() => setActiveTab(Tabs.bills)}>
-          <FaFileInvoice />
-          <span>Hóa đơn</span>
         </TabBtn>
         <TabBtn $active={activeTab === Tabs.drivers} onClick={() => setActiveTab(Tabs.drivers)}>
           <FaIdCard />
@@ -558,9 +571,6 @@ function SaleAdminPanel({ onLogout, user }) {
                   <Btn $secondary onClick={() => adjustPricing('tshirt_price', 1000)}>+</Btn>
                 </StockEdit>
               </StockRow>
-              <CenterRow>
-                <Btn onClick={savePricing}>Lưu giá sản phẩm</Btn>
-              </CenterRow>
             </Card>
 
             <InventoryGrid>
@@ -666,28 +676,40 @@ function SaleAdminPanel({ onLogout, user }) {
               <Btn onClick={loadBills}>Lọc hóa đơn</Btn>
             </Card>
             <Card>
-              <Row>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 10 }}>
                 <div>
                   <Small>Tổng tiền thu được</Small>
-                  <div style={{ fontWeight: 700, fontSize: '1.05rem', color: '#0a66c2' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.15, color: '#0a66c2' }}>
                     {billTotals.total.toLocaleString('vi-VN')}đ
                   </div>
+                  <Small style={{ marginTop: 4 }}>Tổng tiền</Small>
+                </div>
+                <div style={{ display: 'grid', gap: 10, alignContent: 'start' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.1 }}>{billTotals.transfer.toLocaleString('vi-VN')}đ</div>
+                    <Small>CK</Small>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.1 }}>{billTotals.cash.toLocaleString('vi-VN')}đ</div>
+                    <Small>TM</Small>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginTop: 14, textAlign: 'center' }}>
+                <div>
+                  <Small>Logo</Small>
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', lineHeight: 1.15 }}>{billTotals.logo.toLocaleString('vi-VN')}đ</div>
                 </div>
                 <div>
-                  <Small>Tổng tiền Logo</Small>
-                  <div style={{ fontWeight: 700 }}>{billTotals.logo.toLocaleString('vi-VN')}đ</div>
-                </div>
-              </Row>
-              <Row>
-                <div>
-                  <Small>Tổng tiền Thẻ</Small>
-                  <div style={{ fontWeight: 700 }}>{billTotals.card.toLocaleString('vi-VN')}đ</div>
+                  <Small>Thẻ</Small>
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', lineHeight: 1.15 }}>{billTotals.card.toLocaleString('vi-VN')}đ</div>
                 </div>
                 <div>
-                  <Small>Tổng tiền Áo thun</Small>
-                  <div style={{ fontWeight: 700 }}>{billTotals.tshirt.toLocaleString('vi-VN')}đ</div>
+                  <Small>Áo thun</Small>
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', lineHeight: 1.15 }}>{billTotals.tshirt.toLocaleString('vi-VN')}đ</div>
                 </div>
-              </Row>
+              </div>
             </Card>
             <Card>
               <Table>

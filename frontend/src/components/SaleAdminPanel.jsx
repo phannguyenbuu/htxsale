@@ -492,7 +492,7 @@ function SaleAdminPanel({ onLogout, user }) {
       <TabRow>
         <TabBtn $active={activeTab === Tabs.bills} onClick={() => setActiveTab(Tabs.bills)}>
           <FaFileInvoice />
-          <span>Doanh thu</span>
+          <span style={{ whiteSpace: 'nowrap' }}>Doanh thu</span>
         </TabBtn>
         <TabBtn $active={activeTab === Tabs.inventory} onClick={() => setActiveTab(Tabs.inventory)}>
           <FaBoxes />

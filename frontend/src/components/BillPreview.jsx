@@ -13,11 +13,16 @@ const Page = styled.div`
 
 const MobileFrame = styled.div`
   max-width: 480px;
-  margin: 0 auto;
   background: #ffffff;
   border-radius: 22px;
   overflow: hidden;
   box-shadow: 0 16px 40px rgba(16, 24, 40, 0.16);
+`;
+
+const PreviewWrap = styled.div`
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
 `;
 
 const Hero = styled.div`
@@ -186,8 +191,8 @@ const THeadCell = styled(TCell)`
 `;
 
 const FloatingActions = styled.div`
-  position: fixed;
-  right: 18px;
+  position: absolute;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
@@ -361,8 +366,9 @@ function BillPreview() {
 
   return (
     <Page>
-      <MobileFrame ref={billRef}>
-        <Hero>
+      <PreviewWrap>
+        <MobileFrame ref={billRef}>
+          <Hero>
           <HeroRow>
             <HeroBackBtn onClick={() => navigate(isFromAdmin ? '/sale_admin' : '/')}><FaHome /></HeroBackBtn>
             <BillIdWrap>
@@ -416,13 +422,14 @@ function BillPreview() {
               <FieldValue style={{ marginBottom: 0 }}>{order.details}</FieldValue>
             </Card>
           )}
-        </Section>
-      </MobileFrame>
+          </Section>
+        </MobileFrame>
 
-      <FloatingActions>
-        <ActionFab onClick={handleCapture} disabled={isCapturing} title="Chụp bill"><FaCamera /></ActionFab>
-        <ActionFab share onClick={handleShare} disabled={isCapturing} title="Chụp và chia sẻ"><FaShareAlt /></ActionFab>
-      </FloatingActions>
+        <FloatingActions>
+          <ActionFab onClick={handleCapture} disabled={isCapturing} title="Chụp bill"><FaCamera /></ActionFab>
+          <ActionFab share onClick={handleShare} disabled={isCapturing} title="Chụp và chia sẻ"><FaShareAlt /></ActionFab>
+        </FloatingActions>
+      </PreviewWrap>
     </Page>
   );
 }

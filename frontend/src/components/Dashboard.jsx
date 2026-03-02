@@ -21,7 +21,7 @@ const BlueTopSection = styled.section`
   margin: 10px 10px 0;
   border-radius: 22px;
   overflow: hidden;
-  background: linear-gradient(145deg, #08254e 0%, #0d3f78 100%);
+  background: #007bff;
   color: #fff;
 `;
 

@@ -13,7 +13,7 @@ const Page = styled.div`
 `;
 
 const Header = styled.div`
-  background: #08254e;
+  background: #007bff;
   color: #fff;
   padding: 14px 16px;
   display: flex;
@@ -271,16 +271,20 @@ function SaleAdminPanel({ onLogout, user }) {
 
   const [bills, setBills] = useState([]);
   const [billFilterSale, setBillFilterSale] = useState('');
+  const [billFilterHtx, setBillFilterHtx] = useState('');
   const [billDateFrom, setBillDateFrom] = useState('');
   const [billDateTo, setBillDateTo] = useState('');
 
   const [drivers, setDrivers] = useState([]);
   const [driverQuery, setDriverQuery] = useState('');
+  const [driverFilterHtx, setDriverFilterHtx] = useState('');
 
   const [sales, setSales] = useState([]);
   const [saleForm, setSaleForm] = useState({ username: '', full_name: '', phone: '' });
   const [editingSale, setEditingSale] = useState(null);
   const [pendingDeleteSaleId, setPendingDeleteSaleId] = useState(null);
+  const [pendingDeleteBillId, setPendingDeleteBillId] = useState(null);
+  const [pendingDeleteDriverId, setPendingDeleteDriverId] = useState(null);
   const [pendingClearInventory, setPendingClearInventory] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -294,6 +298,10 @@ function SaleAdminPanel({ onLogout, user }) {
   const saleOptions = useMemo(
     () => sales.map((s) => ({ username: s.username, label: s.full_name || s.username })),
     [sales]
+  );
+  const htxOptions = useMemo(
+    () => inventoryRows.map((r) => r.name).filter(Boolean),
+    [inventoryRows]
   );
 
   const billTotals = useMemo(() => {
@@ -358,6 +366,7 @@ function SaleAdminPanel({ onLogout, user }) {
   const loadBills = async () => {
     const params = new URLSearchParams();
     if (billFilterSale) params.set('sale_username', billFilterSale);
+    if (billFilterHtx) params.set('htx', billFilterHtx);
     if (billDateFrom) params.set('date_from', billDateFrom);
     if (billDateTo) params.set('date_to', billDateTo);
     const res = await axios.get(`/api/admin/bills?${params.toString()}`);
@@ -365,8 +374,10 @@ function SaleAdminPanel({ onLogout, user }) {
   };
 
   const loadDrivers = async () => {
-    const q = encodeURIComponent(driverQuery || '');
-    const res = await axios.get(`/api/admin/drivers?query=${q}`);
+    const params = new URLSearchParams();
+    if (driverQuery) params.set('query', driverQuery);
+    if (driverFilterHtx) params.set('htx', driverFilterHtx);
+    const res = await axios.get(`/api/admin/drivers?${params.toString()}`);
     setDrivers(Array.isArray(res.data) ? res.data : []);
   };
 
@@ -469,6 +480,33 @@ function SaleAdminPanel({ onLogout, user }) {
     await axios.delete(`/api/admin/sale_users/${id}`);
     await loadSales();
     setMessage('Đã xóa sale.');
+    window.location.reload();
+  };
+
+  const deleteBill = async (id) => {
+    try {
+      await axios.delete(`/api/admin/bills/${id}`);
+      setMessage('Đã xóa hóa đơn.');
+    } catch (err) {
+      if (err?.response?.status === 404) {
+        setMessage('Hóa đơn không còn tồn tại, đã tải lại danh sách.');
+      } else {
+        throw err;
+      }
+    }
+    await loadBills();
+    window.location.reload();
+  };
+
+  const deleteDriver = async (id) => {
+    try {
+      await axios.delete(`/api/admin/drivers/${id}`);
+      await loadDrivers();
+      setMessage('Đã xóa tài xế.');
+      window.location.reload();
+    } catch (err) {
+      setMessage('Không thể xóa tài xế (có thể do tài xế này đã có đơn hàng).');
+    }
   };
 
   const openEditSale = (sale) => {
@@ -661,7 +699,17 @@ function SaleAdminPanel({ onLogout, user }) {
                     ))}
                   </Select>
                 </div>
-                <div />
+                <div>
+                  <Small>Lọc theo HTX</Small>
+                  <Select value={billFilterHtx} onChange={(e) => setBillFilterHtx(e.target.value)}>
+                    <option value="">Tất cả HTX</option>
+                    {htxOptions.map((htx) => (
+                      <option key={htx} value={htx}>
+                        {htx}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
               </Row>
               <Row>
                 <div>
@@ -686,8 +734,8 @@ function SaleAdminPanel({ onLogout, user }) {
                 </div>
                 <div style={{ display: 'grid', gap: 10, alignContent: 'start' }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 6 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.1 }}>{billTotals.transfer.toLocaleString('vi-VN')}đ</div>
-                    <Small>CK</Small>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.1, color: '#dc3545' }}>{billTotals.transfer.toLocaleString('vi-VN')}đ</div>
+                    <Small style={{ color: '#dc3545' }}>CK</Small>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 6 }}>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem', lineHeight: 1.1 }}>{billTotals.cash.toLocaleString('vi-VN')}đ</div>
@@ -720,20 +768,28 @@ function SaleAdminPanel({ onLogout, user }) {
                     <Th>Sale</Th>
                     <Th>Ngày giờ</Th>
                     <Th>Tổng</Th>
+                    <Th>Thao tác</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {bills.map((b) => (
-                    <ClickableTr
-                      key={b.id}
-                      onClick={() => navigate(`/bill/${b.id}?from=admin`, { state: { fromAdmin: true } })}
-                    >
-                      <Td>{b.id}</Td>
+                    <tr key={b.id}>
+                      <Td
+                        style={{ cursor: 'pointer', color: '#0a66c2', fontWeight: 600 }}
+                        onClick={() => navigate(`/bill/${b.id}?from=admin`, { state: { fromAdmin: true } })}
+                      >
+                        {b.id}
+                      </Td>
                       <Td>{b.htx}</Td>
                       <Td>{b.sale_name || b.sale_username || 'N/A'}</Td>
                       <Td>{new Date(b.created_at).toLocaleString('vi-VN')}</Td>
                       <Td>{(b.total_amount || 0).toLocaleString('vi-VN')}đ</Td>
-                    </ClickableTr>
+                      <Td>
+                        <IconBtn onClick={() => setPendingDeleteBillId(b.id)} title="Xóa bill">
+                          <FaTrashAlt />
+                        </IconBtn>
+                      </Td>
+                    </tr>
                   ))}
                 </tbody>
               </Table>
@@ -744,6 +800,15 @@ function SaleAdminPanel({ onLogout, user }) {
         {activeTab === Tabs.drivers && (
           <>
             <Card>
+              <SearchLabel>Lọc theo HTX</SearchLabel>
+              <Select value={driverFilterHtx} onChange={(e) => setDriverFilterHtx(e.target.value)} style={{ marginBottom: 10 }}>
+                <option value="">Tất cả HTX</option>
+                {htxOptions.map((htx) => (
+                  <option key={htx} value={htx}>
+                    {htx}
+                  </option>
+                ))}
+              </Select>
               <SearchLabel>Tìm nhanh (biển số / tên / số điện thoại)</SearchLabel>
               <SearchInline>
                 <SearchInput value={driverQuery} onChange={(e) => setDriverQuery(e.target.value)} placeholder="Nhập từ khóa..." />
@@ -760,6 +825,7 @@ function SaleAdminPanel({ onLogout, user }) {
                     <Th>Biển số</Th>
                     <Th>SĐT</Th>
                     <Th>HTX</Th>
+                    <Th>Thao tác</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -769,6 +835,11 @@ function SaleAdminPanel({ onLogout, user }) {
                       <Td>{d.license_plate}</Td>
                       <Td>{d.phone}</Td>
                       <Td>{d.htx}</Td>
+                      <Td>
+                        <IconBtn onClick={() => setPendingDeleteDriverId(d.id)} title="Xóa tài xế">
+                          <FaTrashAlt />
+                        </IconBtn>
+                      </Td>
                     </tr>
                   ))}
                 </tbody>
@@ -863,6 +934,52 @@ function SaleAdminPanel({ onLogout, user }) {
                     await deleteSale(pendingDeleteSaleId);
                   } finally {
                     setPendingDeleteSaleId(null);
+                  }
+                }}
+              >
+                Đồng ý
+              </Btn>
+            </ModalActions>
+          </ModalCard>
+        </ModalOverlay>
+      )}
+
+      {pendingDeleteBillId && (
+        <ModalOverlay>
+          <ModalCard>
+            <ModalTitle>Xác nhận xóa hóa đơn</ModalTitle>
+            <ModalText>Bạn có chắc muốn xóa hóa đơn <b>{pendingDeleteBillId}</b> không?</ModalText>
+            <ModalActions>
+              <Btn $secondary onClick={() => setPendingDeleteBillId(null)}>Bỏ qua</Btn>
+              <Btn
+                onClick={async () => {
+                  try {
+                    await deleteBill(pendingDeleteBillId);
+                  } finally {
+                    setPendingDeleteBillId(null);
+                  }
+                }}
+              >
+                Đồng ý
+              </Btn>
+            </ModalActions>
+          </ModalCard>
+        </ModalOverlay>
+      )}
+
+      {pendingDeleteDriverId && (
+        <ModalOverlay>
+          <ModalCard>
+            <ModalTitle>Xác nhận xóa tài xế</ModalTitle>
+            <ModalText>Bạn có chắc muốn xóa tài xế này không?</ModalText>
+            <ModalActions>
+              <Btn $secondary onClick={() => setPendingDeleteDriverId(null)}>Bỏ qua</Btn>
+              <Btn
+                onClick={async () => {
+                  try {
+                    await deleteDriver(pendingDeleteDriverId);
+                  } finally {
+                    setPendingDeleteDriverId(null);
                   }
                 }}
               >

@@ -1,4 +1,63 @@
 ############################################################
+# sale.quanlyhtx.com
+############################################################
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name sale.quanlyhtx.com;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type "text/plain";
+        allow all;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name sale.quanlyhtx.com;
+
+    access_log /var/log/nginx/sale.quanlyhtx.com.ssl.access.log;
+    error_log  /var/log/nginx/sale.quanlyhtx.com.ssl.error.log;
+
+    ssl_certificate     /etc/letsencrypt/live/quanlyhtx.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/quanlyhtx.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+
+    location = /sale {
+        return 301 /;
+    }
+
+    location ^~ /sale/ {
+        rewrite ^/sale/(.*)$ /$1 permanent;
+    }
+
+    location / {
+        root /var/www/htxsale/;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8008/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+############################################################
 # quanlyhtx.com / www.quanlyhtx.com
 ############################################################
 
@@ -90,12 +149,6 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /sale/ {
-        alias /var/www/htxsale/;
-        index index.html;
-        try_files $uri $uri/ /sale/index.html;
     }
 
     location / {

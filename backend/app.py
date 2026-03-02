@@ -320,15 +320,6 @@ def login():
         app.logger.error(f"Login error: {str(e)}")
         return jsonify({'error': 'Internal Server Error', 'message': str(e)}), 500
 
-@app.route('/api/login/qr', methods=['POST'])
-def login_qr():
-    data = request.json
-    token = data.get('token')
-    user = User.query.filter_by(qr_token=token).first()
-    if user:
-         return jsonify({'token': f"user-{user.id}", 'role': user.role, 'username': user.username})
-    return jsonify({'error': 'Invalid QR token'}), 401
-
 # CRUD for Logos
 @app.route('/api/logos', methods=['GET', 'POST'])
 def handle_logos():
@@ -783,12 +774,15 @@ def admin_pricing():
 @app.route('/api/admin/bills', methods=['GET'])
 def admin_bills():
     sale_username = request.args.get('sale_username')
+    htx = (request.args.get('htx') or '').strip()
     date_from = request.args.get('date_from')  # YYYY-MM-DD
     date_to = request.args.get('date_to')      # YYYY-MM-DD
 
     query = Bill.query
     if sale_username:
         query = query.filter(Bill.sale_username == sale_username)
+    if htx:
+        query = query.filter(Bill.htx == htx)
     if date_from:
         try:
             start = datetime.datetime.strptime(date_from, "%Y-%m-%d")
@@ -805,10 +799,24 @@ def admin_bills():
     bills = query.order_by(Bill.created_at.desc()).all()
     return jsonify([b.to_dict() for b in bills])
 
+@app.route('/api/admin/bills/<bill_id>', methods=['DELETE'])
+def admin_delete_bill(bill_id):
+    bill = Bill.query.get_or_404(bill_id)
+    # Also delete from legacy Order table if exists
+    order = Order.query.get(bill_id)
+    if order:
+        db.session.delete(order)
+    db.session.delete(bill)
+    db.session.commit()
+    return jsonify({'message': 'Bill deleted successfully'})
+
 @app.route('/api/admin/drivers', methods=['GET'])
 def admin_drivers():
     query_text = (request.args.get('query') or '').strip()
+    htx = (request.args.get('htx') or '').strip()
     q = Driver.query
+    if htx:
+        q = q.filter(Driver.htx == htx)
     if query_text:
         like = f"%{query_text}%"
         q = q.filter(
@@ -818,6 +826,16 @@ def admin_drivers():
         )
     drivers = q.order_by(Driver.id.desc()).limit(300).all()
     return jsonify([d.to_dict() for d in drivers])
+
+@app.route('/api/admin/drivers/<driver_id>', methods=['DELETE'])
+def admin_delete_driver(driver_id):
+    driver = Driver.query.get_or_404(driver_id)
+    # Note: Deleting a driver might fail if there are foreign key constraints in orders
+    # But current Order model has driver_id as ForeignKey. 
+    # For simplicity, we just delete the driver. If it has orders, DB will throw error unless we cascade.
+    db.session.delete(driver)
+    db.session.commit()
+    return jsonify({'message': 'Driver deleted successfully'})
 
 @app.route('/api/admin/sale_users', methods=['GET', 'POST'])
 def admin_sale_users():
@@ -893,7 +911,7 @@ with app.app_context():
     # Create default admin if not exists
     admin_user = User.query.filter_by(username='admin').first()
     if not admin_user:
-        admin_user = User(username='admin', password_hash=generate_password_hash('123456'), role='admin', qr_token='admin-qr-token')
+        admin_user = User(username='admin', password_hash=generate_password_hash('123456'), role='admin')
         db.session.add(admin_user)
     else:
         # Keep default admin credential aligned with requested login: admin / 123456

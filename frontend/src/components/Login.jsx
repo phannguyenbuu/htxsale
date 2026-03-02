@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { Html5QrcodeScanner } from 'html5-qrcode';
 import styled from 'styled-components';
 import { FaEye, FaEyeSlash, FaTimes } from 'react-icons/fa';
 
@@ -94,15 +93,6 @@ const Button = styled.button`
   }
 `;
 
-const QRButton = styled(Button)`
-  background: #6c757d;
-  margin-top: 12px;
-  &:hover {
-    background: #5a6268;
-    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
-  }
-`;
-
 const ErrorMsg = styled.p`
   color: #ff4d4d;
   margin-top: 10px;
@@ -112,7 +102,6 @@ function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [scanning, setScanning] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
@@ -124,83 +113,40 @@ function Login({ onLogin }) {
     }
   };
 
-  const startScanner = () => {
-    setScanning(true);
-    // Give time for modal to render
-    setTimeout(() => {
-      const scanner = new Html5QrcodeScanner(
-        "reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        /* verbose= */ false
-      );
-      scanner.render(onScanSuccess, onScanFailure);
-
-      function onScanSuccess(decodedText, decodedResult) {
-        scanner.clear();
-        setScanning(false);
-        handleQRLogin(decodedText);
-      }
-
-      function onScanFailure(error) {
-        // handle scan failure, usually better to ignore and keep scanning.
-        // console.warn(`Code scan error = ${error}`);
-      }
-    }, 100);
-  };
-
-  const handleQRLogin = async (token) => {
-    try {
-      const res = await axios.post('/api/login/qr', { token });
-      onLogin(res.data);
-    } catch (err) {
-      setError('Invalid QR Token');
-    }
-  };
-
   return (
     <Container>
       <LoginBox>
         <Title>HTX Sale Login</Title>
-        {!scanning ? (
-          <>
-            <InputWrap>
-              <InputWithIcon
-                type="text"
-                placeholder="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-              {username && (
-                <InputIconBtn type="button" onClick={() => setUsername('')} title="Xóa nhanh">
-                  <FaTimes />
-                </InputIconBtn>
-              )}
-            </InputWrap>
-            <InputWrap>
-              <InputWithIcon
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <InputIconBtn
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-              >
-                {showPassword ? <FaEyeSlash /> : <FaEye />}
-              </InputIconBtn>
-            </InputWrap>
-            <Button onClick={handleLogin}>Login</Button>
-            <QRButton onClick={startScanner}>Scan QR</QRButton>
-            {error && <ErrorMsg>{error}</ErrorMsg>}
-          </>
-        ) : (
-          <div style={{ color: '#333' }}>
-            <div id="reader" style={{ width: '100%', marginBottom: '20px' }}></div>
-            <Button onClick={() => window.location.reload()} style={{ background: '#dc3545', color: 'white' }}>Cancel</Button>
-          </div>
-        )}
+        <InputWrap>
+          <InputWithIcon
+            type="text"
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          {username && (
+            <InputIconBtn type="button" onClick={() => setUsername('')} title="Xóa nhanh">
+              <FaTimes />
+            </InputIconBtn>
+          )}
+        </InputWrap>
+        <InputWrap>
+          <InputWithIcon
+            type={showPassword ? 'text' : 'password'}
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <InputIconBtn
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+          >
+            {showPassword ? <FaEyeSlash /> : <FaEye />}
+          </InputIconBtn>
+        </InputWrap>
+        <Button onClick={handleLogin}>Login</Button>
+        {error && <ErrorMsg>{error}</ErrorMsg>}
       </LoginBox>
     </Container>
   );

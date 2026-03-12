@@ -28,15 +28,15 @@ function saleAdminSpaFallback() {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const base = env.VITE_BASE_PATH || '/'
+  const proxyTarget = env.VITE_PROXY_TARGET || 'https://sale.quanlyhtx.com'
 
   return {
     plugins: [react(), saleAdminSpaFallback()],
-    base,
+    base: '/',
     server: {
       proxy: {
         '/api': {
-          target: 'http://localhost:8008',
+          target: proxyTarget,
           changeOrigin: true,
           secure: false,
         }

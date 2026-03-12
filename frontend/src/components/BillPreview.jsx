@@ -292,6 +292,7 @@ function BillPreview() {
   }, [order, pricing]);
 
   const total = order ? (order.total_amount || items.reduce((sum, item) => sum + (item.unitPrice * item.qty), 0)) : 0;
+  const saleDisplayName = order ? (order.sale_name || order.sale_username || 'N/A') : 'N/A';
 
   const captureBillBlob = async () => {
     if (!billRef.current) return null;
@@ -391,6 +392,7 @@ function BillPreview() {
             <FieldLabel>Họ và tên</FieldLabel><FieldValue>{order.driver?.name || 'N/A'}</FieldValue>
             <FieldLabel>Biển số xe</FieldLabel><FieldValue>{order.driver?.license_plate || 'N/A'}</FieldValue>
             <FieldLabel>Số điện thoại</FieldLabel><FieldValue>{order.driver?.phone || 'N/A'}</FieldValue>
+            <FieldLabel>Sale phụ trách</FieldLabel><FieldValue>{saleDisplayName}</FieldValue>
           </Card>
         </Section>
 

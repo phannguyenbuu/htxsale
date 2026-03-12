@@ -15,7 +15,6 @@ export SALE_DEFAULT_PASSWORD
 
 python - <<'PY'
 import os
-from werkzeug.security import generate_password_hash
 from app import app, db, User
 
 default_password = os.getenv("SALE_DEFAULT_PASSWORD", "123456")
@@ -51,13 +50,17 @@ with app.app_context():
             if user.full_name != full_name:
                 user.full_name = full_name
                 changed = True
+            # Update password to plain text if it looks like a hash
+            if str(user.password_hash or '').startswith(('scrypt:', 'pbkdf2:')):
+                user.password_hash = default_password
+                changed = True
             if changed:
                 updated += 1
         else:
             db.session.add(
                 User(
                     username=username,
-                    password_hash=generate_password_hash(default_password),
+                    password_hash=default_password,
                     role="user",
                     full_name=full_name,
                 )
@@ -65,6 +68,7 @@ with app.app_context():
             created += 1
 
     db.session.commit()
+PY
 
 print(f"Seed completed. created={created}, updated={updated}, password={default_password}")
 PY

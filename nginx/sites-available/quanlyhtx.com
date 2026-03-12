@@ -27,8 +27,8 @@ server {
     access_log /var/log/nginx/sale.quanlyhtx.com.ssl.access.log;
     error_log  /var/log/nginx/sale.quanlyhtx.com.ssl.error.log;
 
-    ssl_certificate     /etc/letsencrypt/live/quanlyhtx.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/quanlyhtx.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/sale.quanlyhtx.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sale.quanlyhtx.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
     ssl_session_timeout 1d;

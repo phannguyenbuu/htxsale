@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import styled from 'styled-components';
-import { FaSignOutAlt, FaFileExport, FaSave, FaPlus, FaMinus, FaDiceD6, FaIdCard, FaTshirt } from 'react-icons/fa';
+import { FaSignOutAlt, FaFileExport, FaPlus, FaMinus, FaDiceD6, FaIdCard, FaTshirt, FaBox } from 'react-icons/fa';
 import { MdCheckCircle } from 'react-icons/md';
 import { useNavigate } from 'react-router-dom';
 
@@ -332,6 +332,34 @@ const NotificationFloater = styled.div`
   color: ${props => props.$type === 'error' ? '#c62828' : '#2e7d32'};
 `;
 
+const DraftList = styled.div`
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+`;
+
+const DraftItem = styled.div`
+  border: 1px solid #dbe2f1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+`;
+
+const DraftTitle = styled.div`
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1f2d47;
+`;
+
+const DraftMeta = styled.div`
+  font-size: 0.8rem;
+  color: #5f6f8f;
+`;
+
 function Dashboard({ user, onLogout }) {
   const navigate = useNavigate();
   const [htxList, setHtxList] = useState([]);
@@ -342,20 +370,48 @@ function Dashboard({ user, onLogout }) {
     phone: '',
     details: ''
   });
-  const [lastOrder, setLastOrder] = useState(null);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
-  const [inventory, setInventory] = useState({ logo: 0, card: 0, tshirt: 0 });
-  const [selection, setSelection] = useState({ logo: 0, card: 0, tshirt: 0 });
-  const [pricing, setPricing] = useState({ logo_price: 50000, card_price: 50000, tshirt_price: 50000 });
+  const [products, setProducts] = useState([]);
+  const [selection, setSelection] = useState({});
   const [paymentMethod, setPaymentMethod] = useState('Chuyển Khoản');
-  const [deliveryMethod, setDeliveryMethod] = useState('Đến mua tại HTX');
+  const [deliveryMethod, setDeliveryMethod] = useState('Đến Mua Tại HTX');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ old_password: '', new_password: '' });
+  const [tempBills, setTempBills] = useState([]);
+  const [selectedTempBillId, setSelectedTempBillId] = useState('');
+  const [cardPriceOverride, setCardPriceOverride] = useState(35000);
   const messageTimeoutRef = useRef(null);
 
-  const PRICE_LOGO = Number(pricing.logo_price || 0);
-  const PRICE_CARD = Number(pricing.card_price || 0);
-  const PRICE_TSHIRT = Number(pricing.tshirt_price || 0);
+  const isAnSpecialSale = String(user?.username || '').trim().toLowerCase() === 'an';
+  const parseMoneyInput = (raw) => Number(String(raw ?? '').replace(/[^\d]/g, '') || 0);
+  const formatMoneyInput = (value) => Number(value || 0).toLocaleString('en-US');
+
+  const iconOf = (code) => {
+    if (code === 'logo') return <FaDiceD6 />;
+    if (code === 'card') return <FaIdCard />;
+    if (code === 'driver_card') return <img src="/thedeo.png" alt="The Nghiep Vu Tai Xe" style={{ width: 22, height: 22, objectFit: 'contain' }} />;
+    if (code === 'tshirt') return <FaTshirt />;
+    return <FaBox />;
+  };
+
+  const colorOf = (code) => {
+    if (code === 'logo') return { bg: '#e3f2fd', fg: '#1976d2' };
+    if (code === 'card' || code === 'driver_card') return { bg: '#fce4ec', fg: '#d81b60' };
+    if (code === 'tshirt') return { bg: '#e8f5e9', fg: '#2e7d32' };
+    return { bg: '#fff8e1', fg: '#ff8f00' };
+  };
+
+  const getUnitPrice = (productCode, fallbackPrice) => {
+    if (isAnSpecialSale && productCode === 'card') return Number(cardPriceOverride || 35000);
+    return Number(fallbackPrice || 0);
+  };
+
+  const totalAmount = products.reduce((sum, p) => {
+    const unit = getUnitPrice(p.code, p.unit_price);
+    return sum + Number(selection[p.code] || 0) * unit;
+  }, 0);
 
   const createDraftBillId = () => {
     const htx = (formData.htx || 'HTX').trim();
@@ -367,36 +423,39 @@ function Dashboard({ user, onLogout }) {
   };
 
   const fetchInventory = (htx) => {
-    const normalize = (val) => String(val || '').trim().toLowerCase();
-    axios.get('/api/admin/inventory').then((res) => {
-      const rows = Array.isArray(res.data) ? res.data : [];
-      const selected = normalize(htx);
-      const matched = rows.find((r) => normalize(r.name) === selected);
-      setInventory({
-        logo: Number(matched?.logo_stock || 0),
-        card: Number(matched?.card_stock || 0),
-        tshirt: Number(matched?.tshirt_stock || 0)
-      });
+    axios.get(`/api/inventory?htx=${encodeURIComponent(htx)}`).then((res) => {
+      const list = Array.isArray(res.data?.products) ? res.data.products : [];
+      const normalized = list.map((p) => ({
+        code: p.code,
+        name: p.name,
+        unit_price: Number(p.unit_price || 0),
+        quantity: Number(p.quantity || 0)
+      }));
+      setProducts(normalized);
     });
   };
 
+  const loadTempBills = () => {
+    if (!user?.username) return;
+    axios.get(`/api/temp_bills?sale_username=${encodeURIComponent(user.username)}`).then((res) => {
+      setTempBills(Array.isArray(res.data) ? res.data : []);
+    }).catch(() => {});
+  };
+
   useEffect(() => {
-    // Fetch HTX list
-    axios.get('/api/htx_list').then(res => {
-      setHtxList(res.data);
-      if (res.data.length > 0) {
-        setFormData(prev => ({ ...prev, htx: res.data[0] }));
-        fetchInventory(res.data[0]);
+    axios.get('/api/htx_list').then((res) => {
+      const list = Array.isArray(res.data) ? res.data : [];
+      setHtxList(list);
+      if (list.length > 0) {
+        setFormData((prev) => ({ ...prev, htx: list[0] }));
+        fetchInventory(list[0]);
       }
     });
-    axios.get('/api/admin/pricing').then((res) => {
-      setPricing({
-        logo_price: Number(res.data?.logo_price || 50000),
-        card_price: Number(res.data?.card_price || 50000),
-        tshirt_price: Number(res.data?.tshirt_price || 50000),
-      });
-    }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    loadTempBills();
+  }, [user?.username]);
 
   useEffect(() => {
     return () => {
@@ -407,12 +466,14 @@ function Dashboard({ user, onLogout }) {
   }, []);
 
   useEffect(() => {
-    setSelection((prev) => ({
-      logo: Math.max(0, Math.min(Number(inventory.logo || 0), Number(prev.logo || 0))),
-      card: Math.max(0, Math.min(Number(inventory.card || 0), Number(prev.card || 0))),
-      tshirt: Math.max(0, Math.min(Number(inventory.tshirt || 0), Number(prev.tshirt || 0))),
-    }));
-  }, [inventory.logo, inventory.card, inventory.tshirt]);
+    setSelection((prev) => {
+      const next = {};
+      products.forEach((p) => {
+        next[p.code] = Math.max(0, Math.min(Number(p.quantity || 0), Number(prev[p.code] || 0)));
+      });
+      return next;
+    });
+  }, [products]);
 
   const showMessage = (text, type = 'success', duration = 2000) => {
     if (messageTimeoutRef.current) {
@@ -428,18 +489,13 @@ function Dashboard({ user, onLogout }) {
     }
   };
 
-  const showValidationMessage = () => {
-    showMessage('Vui lòng điền đủ thông tin', 'error', 2000);
-  };
-
   const isBillInputValid = () => {
     const hasRequiredDriverInfo =
       formData.driver_name.trim() &&
       formData.license_plate.trim() &&
       formData.phone.trim();
-    const hasAtLeastOneItem = (selection.logo + selection.card + selection.tshirt) > 0;
-    const hasDeliveryAddress =
-      deliveryMethod !== 'Gửi về địa chỉ' || deliveryAddress.trim();
+    const hasAtLeastOneItem = Object.values(selection).reduce((sum, qty) => sum + Number(qty || 0), 0) > 0;
+    const hasDeliveryAddress = deliveryMethod !== 'Gửi Về Địa Chỉ' || deliveryAddress.trim();
     return Boolean(hasRequiredDriverInfo && hasAtLeastOneItem && hasDeliveryAddress);
   };
 
@@ -453,21 +509,21 @@ function Dashboard({ user, onLogout }) {
         phone: '',
         details: ''
       });
-      setSelection({ logo: 0, card: 0, tshirt: 0 });
-      setPaymentMethod('Chuyá»ƒn Khoáº£n');
-      setDeliveryMethod('Äáº¿n mua táº¡i HTX');
+      setSelection({});
+      setPaymentMethod('Chuyển Khoản');
+      setDeliveryMethod('Đến Mua Tại HTX');
       setDeliveryAddress('');
+      if (isAnSpecialSale) setCardPriceOverride(35000);
       fetchInventory(value);
       return;
     }
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
 
-    // Autofill Logic
     if (['license_plate', 'phone', 'driver_name'].includes(name) && value.length > 3) {
-      axios.get(`/api/search_driver?${name}=${value}`).then(res => {
-        if (res.data.length > 0) {
+      axios.get(`/api/search_driver?${name}=${value}`).then((res) => {
+        if (Array.isArray(res.data) && res.data.length > 0) {
           const match = res.data[0];
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
             driver_name: prev.driver_name || match.name,
             license_plate: prev.license_plate || match.license_plate,
@@ -478,68 +534,197 @@ function Dashboard({ user, onLogout }) {
     }
   };
 
-  const handleUpBill = async () => {
+  const buildBillPayload = (billId) => {
+    const item_details = {};
+    products.forEach((p) => {
+      const qty = Number(selection[p.code] || 0);
+      if (qty > 0) item_details[p.code] = qty;
+    });
+
+    return {
+      ...formData,
+      bill_id: billId,
+      item_details,
+      logo_qty: Number(item_details.logo || 0),
+      card_qty: Number(item_details.card || 0),
+      tshirt_qty: Number(item_details.tshirt || 0),
+      total_amount: totalAmount,
+      payment_method: paymentMethod,
+      delivery_method: deliveryMethod,
+      delivery_address: deliveryMethod === 'Gửi Về Địa Chỉ' ? deliveryAddress.trim() : '',
+      card_unit_price_override: isAnSpecialSale ? Number(cardPriceOverride || 35000) : undefined,
+      sale_username: user?.username || null
+    };
+  };
+
+  const buildTemporaryPayload = (tempId = '') => {
+    const item_details = {};
+    products.forEach((p) => {
+      const qty = Number(selection[p.code] || 0);
+      if (qty > 0) item_details[p.code] = qty;
+    });
+    return {
+      id: tempId || undefined,
+      sale_username: user?.username || '',
+      htx: formData.htx,
+      driver_name: formData.driver_name,
+      license_plate: formData.license_plate,
+      phone: formData.phone,
+      details: formData.details,
+      item_details,
+      payment_method: paymentMethod,
+      delivery_method: deliveryMethod,
+      delivery_address: deliveryMethod === 'Gửi Về Địa Chỉ' ? deliveryAddress.trim() : '',
+      card_unit_price_override: isAnSpecialSale ? Number(cardPriceOverride || 35000) : 0,
+    };
+  };
+
+  const resetBillForm = () => {
+    setFormData((prev) => ({ ...prev, driver_name: '', license_plate: '', phone: '', details: '' }));
+    setSelection({});
+    setPaymentMethod('Chuyển Khoản');
+    setDeliveryMethod('Đến Mua Tại HTX');
+    setDeliveryAddress('');
+    if (isAnSpecialSale) setCardPriceOverride(35000);
+  };
+
+  const persistBill = async () => {
+    const billId = createDraftBillId();
+    const payload = buildBillPayload(billId);
+    const res = await axios.post('/api/up_bill', payload);
+    return res.data.order_id || billId;
+  };
+
+  const handleExportBill = async () => {
     if (!isBillInputValid()) {
-      showValidationMessage();
+      showMessage('Vui Lòng Điền Đầy Đủ Thông Tin', 'error', 2000);
       return;
     }
 
     try {
       const billId = createDraftBillId();
       const payload = {
-        ...formData,
-        bill_id: billId,
-        logo_qty: selection.logo,
-        card_qty: selection.card,
-        tshirt_qty: selection.tshirt,
-        total_amount: selection.logo * PRICE_LOGO + selection.card * PRICE_CARD + selection.tshirt * PRICE_TSHIRT,
-        payment_method: paymentMethod,
-        delivery_method: deliveryMethod,
-        delivery_address: deliveryMethod === 'Gửi về địa chỉ' ? deliveryAddress.trim() : '',
-        sale_username: user?.username || null
+        ...buildBillPayload(billId),
+        temp_bill_id: selectedTempBillId || undefined,
       };
       const res = await axios.post('/api/up_bill', payload);
-      setLastOrder(res.data.order_id || billId);
-      showMessage('Lưu Bill thành công!', 'success', 2000);
-      // Reset form
-      setFormData(prev => ({ ...prev, driver_name: '', license_plate: '', phone: '', details: '' }));
-      setSelection({ logo: 0, card: 0, tshirt: 0 });
-      setPaymentMethod('Chuyển Khoản');
-      setDeliveryMethod('Đến mua tại HTX');
-      setDeliveryAddress('');
+      const orderId = res.data.order_id || billId;
+      showMessage('Lưu Bill Thành Công', 'success', 1500);
+      resetBillForm();
+      setSelectedTempBillId('');
       fetchInventory(formData.htx);
+      loadTempBills();
+      navigate(`/bill/${orderId}`);
     } catch (err) {
-      showMessage('Lỗi khi lưu bill.', 'error', 2000);
+      showMessage('Lỗi Khi Lưu Bill', 'error', 2000);
     }
   };
 
-  const handleExportBill = () => {
-    if (!isBillInputValid()) {
-      showValidationMessage();
+  const handleSaveTemporaryBill = async () => {
+    if (!formData.htx) {
+      showMessage('Vui Lòng Chọn HTX', 'error', 2000);
       return;
     }
+    try {
+      const res = await axios.post('/api/temp_bills', buildTemporaryPayload(selectedTempBillId));
+      setSelectedTempBillId(res.data?.id || selectedTempBillId);
+      showMessage('Đã Lưu Bill Tạm', 'success', 1500);
+      loadTempBills();
+    } catch (err) {
+      showMessage('Không Lưu Được Bill Tạm', 'error', 2000);
+    }
+  };
 
-    const draftBill = {
-      id: lastOrder || createDraftBillId(),
-      created_at: new Date().toISOString(),
-      htx: formData.htx || 'N/A',
-      details: formData.details || '',
-      logo_qty: selection.logo || 0,
-      card_qty: selection.card || 0,
-      tshirt_qty: selection.tshirt || 0,
-      total_amount: (selection.logo * PRICE_LOGO) + (selection.card * PRICE_CARD) + (selection.tshirt * PRICE_TSHIRT),
-      payment_method: paymentMethod || 'N/A',
-      delivery_method: deliveryMethod || 'N/A',
-      delivery_address: deliveryMethod === 'Gửi về địa chỉ' ? (deliveryAddress || '') : '',
-      driver: {
-        name: formData.driver_name || 'N/A',
-        license_plate: formData.license_plate || 'N/A',
-        phone: formData.phone || 'N/A'
-      }
-    };
+  const handleLoadTemporaryBill = (draft) => {
+    const nextHtx = draft?.htx || '';
+    if (!nextHtx) return;
+    setSelectedTempBillId(draft.id || '');
+    setFormData({
+      htx: nextHtx,
+      driver_name: draft.driver_name || '',
+      license_plate: draft.license_plate || '',
+      phone: draft.phone || '',
+      details: draft.details || '',
+    });
+    setPaymentMethod(draft.payment_method || 'Chuyển Khoản');
+    setDeliveryMethod(draft.delivery_method || 'Đến Mua Tại HTX');
+    setDeliveryAddress(draft.delivery_address || '');
+    if (isAnSpecialSale) {
+      setCardPriceOverride(Number(draft.card_unit_price_override || 35000));
+    }
+    fetchInventory(nextHtx);
+    const itemDetails = (draft.item_details && typeof draft.item_details === 'object') ? draft.item_details : {};
+    setSelection(itemDetails);
+    showMessage('Đã Tải Bill Tạm', 'success', 1200);
+  };
 
-    localStorage.setItem('draftBill', JSON.stringify(draftBill));
-    navigate('/bill/draft', { state: { draftBill } });
+  const handleDeleteTemporaryBill = async (tempId) => {
+    try {
+      await axios.delete(`/api/temp_bills/${encodeURIComponent(tempId)}?sale_username=${encodeURIComponent(user?.username || '')}`);
+      if (selectedTempBillId === tempId) setSelectedTempBillId('');
+      loadTempBills();
+      showMessage('Đã Xóa Bill Tạm', 'success', 1200);
+    } catch (err) {
+      showMessage('Không Xóa Được Bill Tạm', 'error', 2000);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (String(passwordForm.new_password || '').length !== 6) {
+      showMessage('Mật Khẩu Mới Phải Đúng 6 Ký Tự', 'error', 2200);
+      return;
+    }
+    try {
+      await axios.post('/api/change_password', {
+        username: user?.username,
+        old_password: passwordForm.old_password,
+        new_password: passwordForm.new_password,
+      });
+      setPasswordForm({ old_password: '', new_password: '' });
+      setShowChangePassword(false);
+      showMessage('Đổi Mật Khẩu Thành Công', 'success', 2000);
+    } catch (err) {
+      showMessage(err?.response?.data?.error || 'Không Đổi Được Mật Khẩu', 'error', 2500);
+    }
+  };
+
+  const handleCreateUnifiedOrder = async () => {
+    try {
+      const services = ORDER_SERVICE_SCHEMA
+        .filter((s) => Boolean(serviceChecks[s.key]))
+        .map((s) => ({
+          service_type: s.key,
+          amount: Number(serviceAmounts[s.key] || 0),
+        }))
+        .filter((s) => s.amount > 0);
+
+      const payments = ORDER_PAYMENT_SCHEMA
+        .map((p) => ({
+          bank_account: p.key,
+          amount: Number(bankPayments[p.key] || 0),
+        }))
+        .filter((p) => p.amount > 0);
+
+      const amountFromServices = services.reduce((sum, s) => sum + Number(s.amount || 0), 0);
+
+      await axios.post('/api/orders', {
+        plate_number: formData.license_plate,
+        driver_name: formData.driver_name,
+        phone: formData.phone,
+        htx: formData.htx,
+        description: formData.details,
+        amount: amountFromServices,
+        service_type: services[0]?.service_type || null,
+        services,
+        payments,
+        note: orderNote,
+        date: new Date().toISOString().slice(0, 10),
+      });
+
+      showMessage('Đã Lưu Order Theo Schema Mới', 'success', 1800);
+    } catch (err) {
+      showMessage(err?.response?.data?.error || 'Không Lưu Được Order Mới', 'error', 2500);
+    }
   };
 
   return (
@@ -552,10 +737,13 @@ function Dashboard({ user, onLogout }) {
       <BlueTopSection>
         <Header>
           <Title>HTX Sale</Title>
-          <HeaderCenterBtn onClick={() => navigate('/bills')}>Hóa đơn</HeaderCenterBtn>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <HeaderCenterBtn onClick={() => navigate('/bills')}>Hóa Đơn</HeaderCenterBtn>
+            <HeaderCenterBtn onClick={() => setShowChangePassword((v) => !v)}>Đổi Mật Khẩu</HeaderCenterBtn>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span style={{ fontSize: '0.9rem', color: 'rgba(255, 255, 255, 0.82)', fontWeight: '500' }}>{user.username}</span>
-            <LogoutButton onClick={onLogout} title="Đăng xuất"><FaSignOutAlt /></LogoutButton>
+            <LogoutButton onClick={onLogout} title="Đăng Xuất"><FaSignOutAlt /></LogoutButton>
           </div>
         </Header>
 
@@ -563,72 +751,117 @@ function Dashboard({ user, onLogout }) {
           <SectionTitle style={{ color: '#dce9ff', borderBottomColor: 'rgba(220, 233, 255, 0.45)' }}>Tạo Đơn Hàng</SectionTitle>
 
           <FormGroup>
-            <Label style={{ color: '#dbe8ff' }}>Hợp tác xã (HTX)</Label>
+            <Label style={{ color: '#dbe8ff' }}>Hợp Tác Xã (HTX)</Label>
             <Select
               name="htx"
               value={formData.htx}
               onChange={handleChange}
               style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)', borderColor: 'rgba(255, 255, 255, 0.28)', color: '#fff' }}
             >
-              {htxList.map(htx => (
+              {htxList.map((htx) => (
                 <option key={htx} value={htx}>{htx}</option>
               ))}
             </Select>
           </FormGroup>
 
-          <InventoryCard>
-            <IconWrapper>
-              <FaDiceD6 />
-            </IconWrapper>
-            <InventoryInfo>
-              <ItemName>Logo</ItemName>
-              <StockBadge>Kho còn: {Math.max(0, inventory.logo - selection.logo)} cái</StockBadge>
-            </InventoryInfo>
-            <QuantitySelector>
-              <QtyBtn disabled={selection.logo <= 0} onClick={() => setSelection(p => ({ ...p, logo: Math.max(0, p.logo - 1) }))}><FaMinus /></QtyBtn>
-              <QtyDisplay>{selection.logo}</QtyDisplay>
-              <QtyBtn disabled={selection.logo >= inventory.logo || inventory.logo <= 0} onClick={() => setSelection(p => ({ ...p, logo: Math.min(inventory.logo, p.logo + 1) }))}><FaPlus /></QtyBtn>
-            </QuantitySelector>
-          </InventoryCard>
-
-          <InventoryCard>
-            <IconWrapper color="#fce4ec" iconColor="#d81b60">
-              <FaIdCard />
-            </IconWrapper>
-            <InventoryInfo>
-              <ItemName>Thẻ</ItemName>
-              <StockBadge>Kho còn: {Math.max(0, inventory.card - selection.card)} cái</StockBadge>
-            </InventoryInfo>
-            <QuantitySelector>
-              <QtyBtn disabled={selection.card <= 0} onClick={() => setSelection(p => ({ ...p, card: Math.max(0, p.card - 1) }))}><FaMinus /></QtyBtn>
-              <QtyDisplay>{selection.card}</QtyDisplay>
-              <QtyBtn disabled={selection.card >= inventory.card || inventory.card <= 0} onClick={() => setSelection(p => ({ ...p, card: Math.min(inventory.card, p.card + 1) }))}><FaPlus /></QtyBtn>
-            </QuantitySelector>
-          </InventoryCard>
-
-          <InventoryCard>
-            <IconWrapper color="#e8f5e9" iconColor="#2e7d32">
-              <FaTshirt />
-            </IconWrapper>
-            <InventoryInfo>
-              <ItemName>Áo thun</ItemName>
-              <StockBadge>Kho còn: {Math.max(0, inventory.tshirt - selection.tshirt)} cái</StockBadge>
-            </InventoryInfo>
-            <QuantitySelector>
-              <QtyBtn disabled={selection.tshirt <= 0} onClick={() => setSelection(p => ({ ...p, tshirt: Math.max(0, p.tshirt - 1) }))}><FaMinus /></QtyBtn>
-              <QtyDisplay>{selection.tshirt}</QtyDisplay>
-              <QtyBtn disabled={selection.tshirt >= inventory.tshirt || inventory.tshirt <= 0} onClick={() => setSelection(p => ({ ...p, tshirt: Math.min(inventory.tshirt, p.tshirt + 1) }))}><FaPlus /></QtyBtn>
-            </QuantitySelector>
-          </InventoryCard>
+          {products.map((p) => {
+            const colors = colorOf(p.code);
+            const selectedQty = Number(selection[p.code] || 0);
+            const remaining = Math.max(0, Number(p.quantity || 0) - selectedQty);
+            return (
+              <InventoryCard key={p.code}>
+                <IconWrapper color={colors.bg} iconColor={colors.fg}>
+                  {iconOf(p.code)}
+                </IconWrapper>
+                <InventoryInfo>
+                  <ItemName>{p.name}</ItemName>
+                  <StockBadge>
+                    Kho Còn: {remaining} | Giá: {getUnitPrice(p.code, p.unit_price).toLocaleString('vi-VN')}đ
+                  </StockBadge>
+                </InventoryInfo>
+                <QuantitySelector>
+                  <QtyBtn
+                    disabled={selectedQty <= 0}
+                    onClick={() => setSelection((prev) => ({ ...prev, [p.code]: Math.max(0, Number(prev[p.code] || 0) - 1) }))}
+                  >
+                    <FaMinus />
+                  </QtyBtn>
+                  <QtyDisplay>{selectedQty}</QtyDisplay>
+                  <QtyBtn
+                    disabled={selectedQty >= Number(p.quantity || 0) || Number(p.quantity || 0) <= 0}
+                    onClick={() => setSelection((prev) => ({ ...prev, [p.code]: Math.min(Number(p.quantity || 0), Number(prev[p.code] || 0) + 1) }))}
+                  >
+                    <FaPlus />
+                  </QtyBtn>
+                </QuantitySelector>
+              </InventoryCard>
+            );
+          })}
 
           <TotalRow>
             <TotalLabel>Thành Tiền</TotalLabel>
-            <TotalValue>{(selection.logo * PRICE_LOGO + selection.card * PRICE_CARD + selection.tshirt * PRICE_TSHIRT).toLocaleString()}đ</TotalValue>
+            <TotalValue>{totalAmount.toLocaleString('vi-VN')}đ</TotalValue>
           </TotalRow>
         </TopContent>
       </BlueTopSection>
 
       <FormContainer>
+        {tempBills.length > 0 && (
+          <FormGroup>
+            <Label>Bill Tạm Của Bạn</Label>
+            <DraftList>
+              {tempBills.map((draft) => (
+                <DraftItem key={draft.id}>
+                  <div>
+                    <DraftTitle>{draft.license_plate || 'Chưa Có Biển Số'} - {draft.driver_name || 'Chưa Có Tên'}</DraftTitle>
+                    <DraftMeta>{draft.htx} | {new Date(draft.updated_at || draft.created_at).toLocaleString('vi-VN')}</DraftMeta>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <ActionButton style={{ padding: '8px 10px', flex: 'unset' }} onClick={() => handleLoadTemporaryBill(draft)}>Tải</ActionButton>
+                    <ActionButton $secondary style={{ padding: '8px 10px', flex: 'unset' }} onClick={() => handleDeleteTemporaryBill(draft.id)}>Xóa</ActionButton>
+                  </div>
+                </DraftItem>
+              ))}
+            </DraftList>
+          </FormGroup>
+        )}
+
+        {showChangePassword && (
+          <FormGroup style={{ background: '#fff', border: '1px solid #e0e0e0', borderRadius: 12, padding: 10 }}>
+            <Label>Mật Khẩu Hiện Tại</Label>
+            <Input
+              type="password"
+              value={passwordForm.old_password}
+              onChange={(e) => setPasswordForm((p) => ({ ...p, old_password: e.target.value }))}
+              placeholder="Nhập 6 Ký Tự"
+            />
+            <Label style={{ marginTop: 8 }}>Mật Khẩu Mới (6 Ký Tự)</Label>
+            <Input
+              type="password"
+              maxLength={6}
+              value={passwordForm.new_password}
+              onChange={(e) => setPasswordForm((p) => ({ ...p, new_password: e.target.value }))}
+              placeholder="Nhập 6 Ký Tự"
+            />
+            <ButtonGroup>
+              <ActionButton onClick={handleChangePassword}>Lưu Mật Khẩu</ActionButton>
+              <ActionButton $secondary onClick={() => setShowChangePassword(false)}>Hủy</ActionButton>
+            </ButtonGroup>
+          </FormGroup>
+        )}
+
+        {isAnSpecialSale && (
+          <FormGroup>
+            <Label>Đơn Giá Thẻ Đeo (Riêng Ân)</Label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              value={formatMoneyInput(cardPriceOverride)}
+              onChange={(e) => setCardPriceOverride(parseMoneyInput(e.target.value))}
+            />
+          </FormGroup>
+        )}
+
         <PaymentContainer>
           <PaymentOption
             $active={paymentMethod === 'Chuyển Khoản'}
@@ -648,29 +881,29 @@ function Dashboard({ user, onLogout }) {
 
         <PaymentContainer>
           <PaymentOption
-            $active={deliveryMethod === 'Đến mua tại HTX'}
-            onClick={() => setDeliveryMethod('Đến mua tại HTX')}
+            $active={deliveryMethod === 'Đến Mua Tại HTX'}
+            onClick={() => setDeliveryMethod('Đến Mua Tại HTX')}
           >
-            {deliveryMethod === 'Đến mua tại HTX' ? <MdCheckCircle /> : <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid #d1d1d6' }} />}
-            Đến mua tại HTX
+            {deliveryMethod === 'Đến Mua Tại HTX' ? <MdCheckCircle /> : <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid #d1d1d6' }} />}
+            Đến Mua Tại HTX
           </PaymentOption>
           <PaymentOption
-            $active={deliveryMethod === 'Gửi về địa chỉ'}
-            onClick={() => setDeliveryMethod('Gửi về địa chỉ')}
+            $active={deliveryMethod === 'Gửi Về Địa Chỉ'}
+            onClick={() => setDeliveryMethod('Gửi Về Địa Chỉ')}
           >
-            {deliveryMethod === 'Gửi về địa chỉ' ? <MdCheckCircle /> : <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid #d1d1d6' }} />}
-            Gửi về địa chỉ
+            {deliveryMethod === 'Gửi Về Địa Chỉ' ? <MdCheckCircle /> : <div style={{ width: 16, height: 16, borderRadius: '50%', border: '1px solid #d1d1d6' }} />}
+            Gửi Về Địa Chỉ
           </PaymentOption>
         </PaymentContainer>
 
-        {deliveryMethod === 'Gửi về địa chỉ' && (
+        {deliveryMethod === 'Gửi Về Địa Chỉ' && (
           <FormGroup>
-            <Label>Địa chỉ</Label>
+            <Label>Địa Chỉ</Label>
             <TextArea
               name="delivery_address"
               value={deliveryAddress}
               onChange={(e) => setDeliveryAddress(e.target.value)}
-              placeholder="Nhập địa chỉ giao hàng"
+              placeholder="Nhập Địa Chỉ Giao Hàng"
               rows={3}
               style={{ minHeight: 'unset' }}
             />
@@ -679,40 +912,38 @@ function Dashboard({ user, onLogout }) {
 
         <FormGroup style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
           <div>
-            <Label>Biển số xe</Label>
+            <Label>Biển Số Xe</Label>
             <Input name="license_plate" value={formData.license_plate} onChange={handleChange} placeholder="VD: 59A-123.45" />
           </div>
           <div>
-            <Label>Số điện thoại</Label>
+            <Label>Số Điện Thoại</Label>
             <Input name="phone" value={formData.phone} onChange={handleChange} placeholder="VD: 0909123456" />
           </div>
         </FormGroup>
 
         <FormGroup>
-          <Label>Tên tài xế</Label>
-          <Input name="driver_name" value={formData.driver_name} onChange={handleChange} placeholder="Nhập tên tài xế" />
+          <Label>Tên Tài Xế</Label>
+          <Input name="driver_name" value={formData.driver_name} onChange={handleChange} placeholder="Nhập Tên Tài Xế" />
         </FormGroup>
 
         <FormGroup>
-          <Label>Ghi chú</Label>
-          <TextArea name="details" value={formData.details} onChange={handleChange} placeholder="Chi tiết..." />
+          <Label>Ghi Chú</Label>
+          <TextArea name="details" value={formData.details} onChange={handleChange} placeholder="Chi Tiết..." />
         </FormGroup>
 
         <ButtonGroup>
-          <ActionButton onClick={handleUpBill} $secondary>
-            <FaSave /> Lưu Bill
+          <ActionButton $secondary onClick={handleSaveTemporaryBill}>
+            Lưu Bill
           </ActionButton>
-
-          <ActionButton
-            onClick={handleExportBill}
-          >
+          <ActionButton onClick={handleExportBill}>
             <FaFileExport /> Xuất Bill
           </ActionButton>
         </ButtonGroup>
-
       </FormContainer>
     </DashboardContainer>
   );
 }
 
 export default Dashboard;
+
+

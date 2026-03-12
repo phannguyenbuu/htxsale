@@ -489,11 +489,11 @@ function SaleAdminPanel({ onLogout, user }) {
     if (billDateTo) params.set('date_to', billDateTo);
     const res = await axios.get(`/api/admin/bills?${params.toString()}`);
     let data = Array.isArray(res.data) ? res.data : [];
-    // If description contains 'Chưa TT', force payment_method to display 'Chưa TT'
+    // Only update status for UI logic, keep payment_method as is from DB
     data = data.map(b => {
-        const desc = b.details || b.note || '';
-        if (desc.includes('Chưa TT')) {
-            return { ...b, payment_method: 'Chưa TT', status: 'Chưa TT' };
+        const desc = (b.details || b.note || '').toLowerCase();
+        if (desc.includes('chưa tt')) {
+            return { ...b, status: 'Chưa TT' };
         }
         return b;
     });

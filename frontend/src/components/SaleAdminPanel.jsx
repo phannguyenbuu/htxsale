@@ -775,8 +775,8 @@ function SaleAdminPanel({ onLogout, user }) {
                                 setPreviewImage(b.bill_image_path);
                             }
                         }}>
-                            {b.payment_method === 'Chưa TT' ? <span style={{color: '#dc3545', fontWeight: 'bold'}}>{b.payment_method}</span> : b.payment_method} 
-                            {b.status === 'Chưa TT' && b.payment_method !== 'Chưa TT' && <span style={{color:'#dc3545', fontWeight:'bold'}}>(Chưa TT)</span>} 
+                            {(!b.payment_method || b.payment_method === '') ? (b.status === 'Chưa TT' ? <span style={{color: '#dc3545', fontWeight: 'bold'}}>Chưa TT</span> : 'Chuyển Khoản') : (b.payment_method === 'Chưa TT' ? <span style={{color: '#dc3545', fontWeight: 'bold'}}>{b.payment_method}</span> : b.payment_method)} 
+                            {b.status === 'Chưa TT' && b.payment_method !== 'Chưa TT' && b.payment_method !== '' && <span style={{color:'#dc3545', fontWeight:'bold'}}>(Chưa TT)</span>} 
                             {b.bill_image_path && <FaCamera style={{marginLeft: 4, verticalAlign: 'middle'}} />}
                         </Td>
                         <Td style={{background: '#ddd'}}><Small>{b.transfer_date || '-'}</Small></Td>
